@@ -1,0 +1,31 @@
+{
+  "name": "screenshot-analysis-server",
+  "version": "1.0.0",
+  "description": "MCP server for screenshot analysis and tutorial overlay generation",
+  "main": "build/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node build/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0",
+    "sharp": "^0.33.5",
+    "axios": "^1.7.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0",
+    "tsx": "^4.16.0"
+  },
+  "keywords": [
+    "mcp",
+    "screenshot",
+    "ai",
+    "claude",
+    "tutorial"
+  ],
+  "author": "",
+  "license": "MIT"
+}
