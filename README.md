@@ -2,7 +2,9 @@
 
 🚀 **AI搭載インタラクティブオーバーレイアプリ**
 
-Ponko2は、Claude AIを活用してスクリーンショットを分析し、UI要素の位置を特定してチュートリアル表示するmacOSアプリケーションです。
+![Ponko2 Main Interface](docs/images/main.png)
+
+Ponko2は、Claude AIを活用してスクリーンショットを分析し、UI要素の位置を特定してチュートリアル表示する革新的なmacOSアプリケーションです。
 
 ![Swift](https://img.shields.io/badge/Swift-5.9-orange.svg)
 ![Platform](https://img.shields.io/badge/Platform-macOS-blue.svg)
