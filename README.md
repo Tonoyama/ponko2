@@ -2,7 +2,7 @@
 
 🚀 **インタラクティブチュートリアル表示アプリ**
 
-<img src="docs/images/main.png" alt="Ponko2 Main Interface" width="80%">
+<img src="docs/images/main.png" alt="Ponko2 Main Interface" width="70%">
 
 Ponko2は、Claude AIを活用してスクリーンショットを分析し、UI要素の位置を特定してチュートリアル表示するmacOSアプリケーションです。
 
