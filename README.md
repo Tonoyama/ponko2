@@ -1,5 +1,7 @@
 # Ponko2 - AI Overlay App
 
+**※ 現時点では座標の設定がおかしく本当にポンコツです(今後修正します)**
+
 🚀 **インタラクティブチュートリアル表示アプリ**
 
 <img src="docs/images/main.png" alt="Ponko2 Main Interface" width="70%">
