@@ -72,7 +72,7 @@ class AppState: ObservableObject {
                 }
                 
                 if !validSteps.isEmpty {
-                    // さらに厳密な座標安全化処理
+                    // 🎯 精密座標処理システム - 適応的マージン適用
                     let ultraSafeSteps = validSteps.compactMap { step -> TutorialStep? in
                         let rect = step.boundingBox
                         
@@ -85,18 +85,17 @@ class AppState: ObservableObject {
                             return nil
                         }
                         
-                        // 画面境界内への強制クランプ
+                        // 🔧 適応的マージン処理システム
                         let screenBounds = NSScreen.main?.frame ?? CGRect(x: 0, y: 0, width: 1920, height: 1080)
-                        let safeX = max(0, min(rect.origin.x, screenBounds.width - 100))
-                        let safeY = max(0, min(rect.origin.y, screenBounds.height - 50))
-                        let safeWidth = max(50, min(rect.width, screenBounds.width - safeX))
-                        let safeHeight = max(30, min(rect.height, screenBounds.height - safeY))
+                        let adaptiveRect = calculateAdaptiveMargin(rect: rect, screenBounds: screenBounds, elementText: step.text)
                         
-                        let safeRect = CGRect(x: safeX, y: safeY, width: safeWidth, height: safeHeight)
+                        print("🎯 適応的マージン適用結果:")
+                        print("  元座標: (\(rect.origin.x), \(rect.origin.y))")
+                        print("  適応後: (\(adaptiveRect.origin.x), \(adaptiveRect.origin.y))")
                         
                         return TutorialStep(
                             text: step.text,
-                            boundingBox: safeRect,
+                            boundingBox: adaptiveRect,
                             description: step.description
                         )
                     }
@@ -762,6 +761,66 @@ struct TutorialStepView: View {
             print("  - 説明: \(step.description)")
         }
     }
+}
+
+// MARK: - Adaptive Margin Calculation
+func calculateAdaptiveMargin(rect: CGRect, screenBounds: CGRect, elementText: String) -> CGRect {
+    print("🔧 適応的マージン計算開始:")
+    print("  要素: \(elementText)")
+    print("  元座標: (\(rect.origin.x), \(rect.origin.y))")
+    print("  スクリーン: \(screenBounds.width)x\(screenBounds.height)")
+    
+    // 画面端からの距離を計算
+    let leftDistance = rect.origin.x
+    let rightDistance = screenBounds.width - rect.maxX
+    let topDistance = rect.origin.y  
+    let bottomDistance = screenBounds.height - rect.maxY
+    
+    // 最小距離を判定
+    let minDistance = min(leftDistance, rightDistance, topDistance, bottomDistance)
+    
+    // 適応的マージン計算
+    let adaptiveMargin: CGFloat
+    let edgeThreshold: CGFloat = 50  // 端判定の閾値
+    
+    if minDistance < edgeThreshold {
+        // 画面端近く: マージンを最小限に
+        adaptiveMargin = max(2, minDistance * 0.1)
+        print("  🏃‍♂️ 画面端モード: マージン=\(adaptiveMargin)px")
+    } else {
+        // 画面中央: 通常マージン
+        adaptiveMargin = 12
+        print("  🎯 中央モード: マージン=\(adaptiveMargin)px")
+    }
+    
+    // 座標の安全性チェック
+    guard rect.origin.x.isFinite && rect.origin.y.isFinite &&
+          rect.size.width.isFinite && rect.size.height.isFinite &&
+          !rect.origin.x.isNaN && !rect.origin.y.isNaN &&
+          !rect.size.width.isNaN && !rect.size.height.isNaN else {
+        print("  ❌ 無効座標検出、フォールバック適用")
+        return CGRect(x: screenBounds.width/2 - 100, y: screenBounds.height/2 - 50, width: 200, height: 100)
+    }
+    
+    // サイズ制約
+    let minWidth: CGFloat = 50
+    let minHeight: CGFloat = 30
+    let maxWidth: CGFloat = min(300, screenBounds.width * 0.25)
+    let maxHeight: CGFloat = min(150, screenBounds.height * 0.15)
+    
+    let adjustedWidth = max(minWidth, min(maxWidth, rect.width))
+    let adjustedHeight = max(minHeight, min(maxHeight, rect.height))
+    
+    // 適応的マージンで位置調整
+    let adjustedX = max(adaptiveMargin, min(rect.origin.x, screenBounds.width - adjustedWidth - adaptiveMargin))
+    let adjustedY = max(adaptiveMargin, min(rect.origin.y, screenBounds.height - adjustedHeight - adaptiveMargin))
+    
+    let adaptiveRect = CGRect(x: adjustedX, y: adjustedY, width: adjustedWidth, height: adjustedHeight)
+    
+    print("  📍 適応結果: (\(adjustedX), \(adjustedY)) サイズ: \(adjustedWidth)x\(adjustedHeight)")
+    print("  🔄 変位: x=\(adjustedX - rect.origin.x), y=\(adjustedY - rect.origin.y)")
+    
+    return adaptiveRect
 }
 
 // MARK: - Extensions
@@ -1468,13 +1527,25 @@ class ClaudeAPIService {
         
         // 物理座標から論理座標への変換
         let logicalX = physicalRect.origin.x / scaleFactor
-        let logicalY = physicalRect.origin.y / scaleFactor
         let logicalWidth = physicalRect.size.width / scaleFactor
         let logicalHeight = physicalRect.size.height / scaleFactor
         
-        // スクリーン境界内に収める
+        // ⚡️ Y座標系変換の修正: CoreGraphics（左上原点）→ AppKit（左下原点）
+        // 物理座標のY座標を論理座標に変換し、さらに座標系を反転
+        let physicalLogicalY = physicalRect.origin.y / scaleFactor
+        let logicalY = screenFrame.height - physicalLogicalY - logicalHeight
+        
+        // デバッグ情報を出力（変換前）
+        print("🔧 座標系変換:")
+        print("  物理座標: (\(physicalRect.origin.x), \(physicalRect.origin.y))")
+        print("  論理座標（変換前）: (\(logicalX), \(physicalLogicalY))")
+        print("  論理座標（Y反転後）: (\(logicalX), \(logicalY))")
+        
+        // スクリーン境界内に収める（最小限のクランプ）
         let clampedX = max(0, min(logicalX, screenFrame.width - logicalWidth))
         let clampedY = max(0, min(logicalY, screenFrame.height - logicalHeight))
+        
+        print("  最終座標: (\(clampedX), \(clampedY))")
         
         return CGRect(
             x: clampedX,
