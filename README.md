@@ -114,7 +114,7 @@ swift run MyOverlayApp
 ```
 
 ### 📱 初回セットアップ
-1. **画面収録権限**: システム設定 > プライバシーとセキュリティ > 画面収録
+1. **画面収録権限**: システム設定 > プライバシーとセキュリティ > 画面収録を`.build/debug/MyOverlayApp`に設定
 2. **API設定**: アプリ内の⚙️ボタンから.envファイルの作成・APIキー設定が可能
 3. **実行確認**: 緑のカメラボタンでスクリーンショット撮影テスト
 
@@ -170,30 +170,6 @@ let frameWidth: CGFloat = 4.0           // 枠線太さ
 - コードコメントは日本語OK
 - セキュリティを最優先に考慮
 - パフォーマンス影響を最小限に
-
-## 📚 技術詳細
-
-### 外部プロセス方式
-```swift
-// 安全なオーバーレイ表示
-let process = Process()
-process.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
-process.arguments = [helperPath, text, x, y, width, height, description]
-```
-
-### AI座標変換
-```swift
-// 物理座標 → 論理座標変換
-let logicalX = physicalRect.origin.x / scaleFactor
-let logicalY = physicalRect.origin.y / scaleFactor
-```
-
-## 🏆 実績
-
-- ✅ **segmentation fault完全解決**: 外部プロセス方式採用
-- ✅ **AI精度向上**: Claude API統合による高精度UI検出
-- ✅ **メモリ効率**: 自動画像圧縮で5MB以内に最適化
-- ✅ **ユーザーエクスペリエンス**: 直感的なチャット形式UI
 
 ## 📄 ライセンス
 
