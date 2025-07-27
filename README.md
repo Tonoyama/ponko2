@@ -8,9 +8,15 @@
 
 Ponko2は、Claude AIを活用してスクリーンショットを分析し、UI要素の位置を特定してチュートリアル表示するmacOSアプリケーションです。
 
+アプリ上にオーバーレイを作成することでアプリを操作しながらLLMにUIを教えてもらうことが可能です
+
+<img src="docs/images/overlay.png" alt="Ponko2 Main Interface" width="70%">
+
 ![Swift](https://img.shields.io/badge/Swift-5.9-orange.svg)
 ![Platform](https://img.shields.io/badge/Platform-macOS-blue.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
+
+
 
 ## ✨ 主要機能
 
