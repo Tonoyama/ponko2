@@ -57,6 +57,7 @@ Ponko2/
 - Xcode 15.0+
 - Swift 5.9+
 - Node.js 18+ (MCPサーバー用)
+- Claude API キー ([Anthropic Console](https://console.anthropic.com) で取得)
 
 ### インストール
 
@@ -66,7 +67,29 @@ git clone https://github.com/Tonoyama/ponko2.git
 cd ponko2
 ```
 
-2. **依存関係のインストール**
+2. **環境設定ファイルの作成**
+```bash
+# .env.exampleから.envファイルを作成
+cp .env.example .env
+```
+
+3. **APIキーの設定**
+```bash
+# .envファイルを編集してAPIキーを設定
+nano .env
+```
+
+`.env`ファイル内で以下を設定：
+```bash
+# Claude API キー (必須)
+CLAUDE_API_KEY=sk-ant-api03-your-actual-api-key-here
+
+# アプリ設定 (オプション)
+APP_NAME=Ponko2
+LOG_LEVEL=info
+```
+
+4. **依存関係のインストール**
 ```bash
 # Swift依存関係
 swift package resolve
@@ -78,7 +101,7 @@ npm run build
 cd ..
 ```
 
-3. **ビルドと実行**
+5. **ビルドと実行**
 ```bash
 swift build
 swift run MyOverlayApp
@@ -86,8 +109,16 @@ swift run MyOverlayApp
 
 ### 📱 初回セットアップ
 1. **画面収録権限**: システム設定 > プライバシーとセキュリティ > 画面収録
-2. **API設定**: Claude APIキーの設定（必要に応じて）
+2. **API設定**: アプリ内の⚙️ボタンから.envファイルの作成・APIキー設定が可能
 3. **実行確認**: 緑のカメラボタンでスクリーンショット撮影テスト
+
+### 🔐 Claude API キーの取得方法
+
+1. [Anthropic Console](https://console.anthropic.com) にアクセス
+2. アカウント作成・ログイン
+3. API Keys セクションで新しいキーを作成
+4. 作成されたキー（`sk-ant-api03-...`で始まる）をコピー
+5. `.env`ファイルの`CLAUDE_API_KEY`に設定
 
 ## 💡 使用方法
 

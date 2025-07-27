@@ -3,6 +3,205 @@ import SwiftUI
 import Foundation
 import CoreGraphics
 
+// MARK: - Environment Management (.env)
+@MainActor
+class EnvironmentManager: ObservableObject {
+    static let shared = EnvironmentManager()
+    
+    @Published var isAPIKeySet: Bool = false
+    @Published var envFilePath: String = ""
+    @Published var lastError: String? = nil
+    
+    private let envFileName = ".env"
+    private let envExampleFileName = ".env.example"
+    
+    private init() {
+        setupEnvFilePath()
+        checkAPIKeyExists()
+    }
+    
+    private func setupEnvFilePath() {
+        let currentDir = FileManager.default.currentDirectoryPath
+        envFilePath = "\(currentDir)/\(envFileName)"
+    }
+    
+    func loadAPIKey() -> String? {
+        guard let envContent = loadEnvFile() else {
+            print("⚠️ .envファイルが見つからないか読み込めません")
+            return nil
+        }
+        
+        // CLAUDE_API_KEYを抽出
+        let lines = envContent.components(separatedBy: .newlines)
+        for line in lines {
+            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // コメント行やエラー行をスキップ
+            if trimmedLine.isEmpty || trimmedLine.hasPrefix("#") {
+                continue
+            }
+            
+            if trimmedLine.hasPrefix("CLAUDE_API_KEY=") {
+                let apiKey = String(trimmedLine.dropFirst("CLAUDE_API_KEY=".count))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "\"'")) // クォート削除
+                
+                if !apiKey.isEmpty && apiKey != "sk-ant-api03-your-api-key-here" {
+                    print("✅ .envファイルからAPIキーを読み込みました")
+                    return apiKey
+                }
+            }
+        }
+        
+        print("⚠️ .envファイルに有効なCLAUDE_API_KEYが設定されていません")
+        return nil
+    }
+    
+    func saveAPIKey(_ apiKey: String) -> Bool {
+        guard !apiKey.isEmpty else {
+            lastError = "APIキーが空です"
+            return false
+        }
+        
+        guard apiKey.hasPrefix("sk-ant-") else {
+            lastError = "無効なAPIキー形式です（sk-ant-で始まる必要があります）"
+            return false
+        }
+        
+        // .envファイルの内容を更新
+        var envContent = loadEnvFile() ?? ""
+        var lines = envContent.components(separatedBy: .newlines)
+        var apiKeyLineFound = false
+        
+        // 既存のCLAUDE_API_KEY行を更新
+        for i in 0..<lines.count {
+            let trimmedLine = lines[i].trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedLine.hasPrefix("CLAUDE_API_KEY=") {
+                lines[i] = "CLAUDE_API_KEY=\(apiKey)"
+                apiKeyLineFound = true
+                break
+            }
+        }
+        
+        // CLAUDE_API_KEY行が見つからない場合は追加
+        if !apiKeyLineFound {
+            if !envContent.isEmpty {
+                lines.append("")
+            }
+            lines.append("# Claude API キー")
+            lines.append("CLAUDE_API_KEY=\(apiKey)")
+        }
+        
+        let newContent = lines.joined(separator: "\n")
+        
+        do {
+            try newContent.write(toFile: envFilePath, atomically: true, encoding: .utf8)
+            
+            DispatchQueue.main.async {
+                self.isAPIKeySet = true
+                self.lastError = nil
+            }
+            
+            print("✅ APIキーを.envファイルに保存しました")
+            return true
+        } catch {
+            lastError = "ファイル保存エラー: \(error.localizedDescription)"
+            print("❌ .envファイルの保存に失敗: \(error)")
+            return false
+        }
+    }
+    
+    func createEnvFileFromExample() -> Bool {
+        let currentDir = FileManager.default.currentDirectoryPath
+        let examplePath = "\(currentDir)/\(envExampleFileName)"
+        
+        guard FileManager.default.fileExists(atPath: examplePath) else {
+            lastError = ".env.exampleファイルが見つかりません"
+            print("❌ .env.exampleファイルが見つかりません: \(examplePath)")
+            return false
+        }
+        
+        do {
+            let exampleContent = try String(contentsOfFile: examplePath, encoding: .utf8)
+            try exampleContent.write(toFile: envFilePath, atomically: true, encoding: .utf8)
+            
+            print("✅ .env.exampleから.envファイルを作成しました")
+            checkAPIKeyExists()
+            return true
+        } catch {
+            lastError = "ファイル作成エラー: \(error.localizedDescription)"
+            print("❌ .envファイルの作成に失敗: \(error)")
+            return false
+        }
+    }
+    
+    func envFileExists() -> Bool {
+        return FileManager.default.fileExists(atPath: envFilePath)
+    }
+    
+    private func loadEnvFile() -> String? {
+        guard FileManager.default.fileExists(atPath: envFilePath) else {
+            return nil
+        }
+        
+        do {
+            return try String(contentsOfFile: envFilePath, encoding: .utf8)
+        } catch {
+            lastError = "ファイル読み込みエラー: \(error.localizedDescription)"
+            print("❌ .envファイルの読み込みに失敗: \(error)")
+            return nil
+        }
+    }
+    
+    private func checkAPIKeyExists() {
+        isAPIKeySet = loadAPIKey() != nil
+    }
+    
+    func testAPIKey() async -> Bool {
+        guard let apiKey = loadAPIKey() else {
+            print("❌ テスト用APIキーが見つかりません")
+            return false
+        }
+        
+        print("🧪 APIキー接続テストを開始...")
+        
+        // 最小限のテストリクエスト
+        let testRequest = [
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 10,
+            "messages": [
+                [
+                    "role": "user",
+                    "content": "Hello"
+                ]
+            ]
+        ] as [String : Any]
+        
+        do {
+            let url = URL(string: "https://api.anthropic.com/v1/messages")!
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+            request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+            request.httpBody = try JSONSerialization.data(withJSONObject: testRequest)
+            
+            let (_, response) = try await URLSession.shared.data(for: request)
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                let success = httpResponse.statusCode == 200
+                print(success ? "✅ APIキーテスト成功" : "❌ APIキーテスト失敗: \(httpResponse.statusCode)")
+                return success
+            }
+            
+            return false
+        } catch {
+            print("❌ APIキーテストエラー: \(error)")
+            return false
+        }
+    }
+}
+
 // MARK: - Data Models
 struct ChatMessage: Identifiable {
     let id = UUID()
@@ -32,7 +231,9 @@ class AppState: ObservableObject {
     @Published var tutorialSteps: [TutorialStep] = []
     @Published var isShowingTutorial = false
     @Published var isProcessing = false
-    @Published var lastScreenshot: NSImage?
+    @Published var showSettings = false
+    
+    @ObservedObject var environmentManager = EnvironmentManager.shared
     
     func sendMessage() async {
         let message = currentInput.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -155,35 +356,6 @@ class AppState: ObservableObject {
     }
     
     
-    func takeScreenshot() async {
-        await MainActor.run {
-            print("📷 スクリーンショット撮影を開始...")
-            
-            // macOSのスクリーンショット権限をチェック
-            if let cgImage = CGWindowListCreateImage(
-                CGRect.infinite,
-                .optionOnScreenOnly,
-                kCGNullWindowID,
-                .bestResolution
-            ) {
-                let size = NSSize(width: cgImage.width, height: cgImage.height)
-                let image = NSImage(cgImage: cgImage, size: size)
-                lastScreenshot = image
-                
-                chatMessages.append(ChatMessage(
-                    content: "✅ スクリーンショットを撮影しました！ (サイズ: \(Int(size.width))x\(Int(size.height)))",
-                    type: .assistant
-                ))
-                print("📷 スクリーンショット撮影成功: \(size)")
-            } else {
-                chatMessages.append(ChatMessage(
-                    content: "❌ スクリーンショットの撮影に失敗しました。\n\n「システム設定 > プライバシーとセキュリティ > 画面収録」でアプリの権限を有効にしてください。",
-                    type: .assistant
-                ))
-                print("❌ スクリーンショット撮影失敗 - 権限不足の可能性")
-            }
-        }
-    }
     
     func hideTutorial() {
         isShowingTutorial = false
@@ -284,6 +456,252 @@ struct FloatingPanelView: View {
                 .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
         )
         .environmentObject(appState)
+        .sheet(isPresented: $appState.showSettings) {
+            SettingsView(environmentManager: appState.environmentManager)
+        }
+    }
+}
+
+// MARK: - Settings View
+struct SettingsView: View {
+    @ObservedObject var environmentManager: EnvironmentManager
+    @Environment(\.dismiss) private var dismiss
+    
+    @State private var apiKeyInput: String = ""
+    @State private var showingAPIKey: Bool = false
+    @State private var isTestingAPI: Bool = false
+    @State private var testResult: String? = nil
+    @State private var showingAlert: Bool = false
+    @State private var alertMessage: String = ""
+    @State private var showCreateEnvFile: Bool = false
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            // ヘッダー
+            HStack {
+                Text("⚙️ .env設定")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                Spacer()
+                Button("閉じる") {
+                    dismiss()
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding()
+            
+            // 設定状態表示
+            VStack(spacing: 8) {
+                HStack {
+                    Image(systemName: environmentManager.isAPIKeySet ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                        .foregroundColor(environmentManager.isAPIKeySet ? .green : .orange)
+                    
+                    Text(environmentManager.isAPIKeySet ? "APIキーが設定済みです" : "APIキーが設定されていません")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    
+                    Spacer()
+                }
+                
+                // .envファイル存在状況
+                HStack {
+                    Image(systemName: environmentManager.envFileExists() ? "doc.fill" : "doc.badge.plus")
+                        .foregroundColor(environmentManager.envFileExists() ? .blue : .gray)
+                    
+                    Text(environmentManager.envFileExists() ? ".envファイル存在" : ".envファイル未作成")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Spacer()
+                }
+                
+                if !environmentManager.isAPIKeySet {
+                    Text("Claude AIの機能を使用するには.envファイルでAPIキーを設定してください")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding()
+            .background(Color.gray.opacity(0.1))
+            .cornerRadius(8)
+            
+            // .envファイル作成ボタン（ファイルが存在しない場合のみ）
+            if !environmentManager.envFileExists() {
+                VStack(spacing: 8) {
+                    Text("📝 .envファイルの作成")
+                        .font(.headline)
+                    
+                    Text(".env.exampleから.envファイルを作成します")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Button(action: {
+                        if environmentManager.createEnvFileFromExample() {
+                            showAlert("✅ .envファイルを作成しました！\n次にAPIキーを設定してください。")
+                        } else {
+                            showAlert("❌ .envファイルの作成に失敗しました。\n\(environmentManager.lastError ?? "")")
+                        }
+                    }) {
+                        HStack {
+                            Image(systemName: "doc.badge.plus")
+                            Text(".envファイルを作成")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .padding()
+                .background(Color.blue.opacity(0.1))
+                .cornerRadius(8)
+            }
+            
+            // APIキー入力
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Claude API Key")
+                    .font(.headline)
+                
+                HStack {
+                    Group {
+                        if showingAPIKey {
+                            TextField("sk-ant-api03-...", text: $apiKeyInput)
+                        } else {
+                            SecureField("sk-ant-api03-...", text: $apiKeyInput)
+                        }
+                    }
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .font(.system(.body, design: .monospaced))
+                    
+                    Button(action: {
+                        showingAPIKey.toggle()
+                    }) {
+                        Image(systemName: showingAPIKey ? "eye.slash" : "eye")
+                            .foregroundColor(.gray)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+                
+                Text("Anthropic Console (console.anthropic.com) で取得してください")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            // ボタンエリア
+            VStack(spacing: 12) {
+                // 保存ボタン
+                Button(action: saveAPIKey) {
+                    HStack {
+                        Image(systemName: "key.fill")
+                        Text("APIキーを.envに保存")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                
+                // テストボタン
+                if environmentManager.isAPIKeySet {
+                    Button(action: testAPIConnection) {
+                        HStack {
+                            if isTestingAPI {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                Text("テスト中...")
+                            } else {
+                                Image(systemName: "network")
+                                Text("接続テスト")
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isTestingAPI)
+                }
+            }
+            
+            // テスト結果表示
+            if let result = testResult {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("テスト結果:")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    
+                    Text(result)
+                        .font(.caption)
+                        .padding(8)
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            
+            Spacer()
+            
+            // フッター情報
+            VStack(alignment: .leading, spacing: 4) {
+                Text("💡 .env設定について:")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                
+                Text("• APIキーは.envファイルに平文で保存されます")
+                    .font(.caption2)
+                Text("• .envファイルは.gitignoreで除外されています")
+                    .font(.caption2)
+                Text("• 設定は\(environmentManager.envFilePath)に保存されます")
+                    .font(.caption2)
+            }
+            .foregroundColor(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding()
+        .frame(width: 450, height: 550)
+        .alert("設定", isPresented: $showingAlert) {
+            Button("OK") { }
+        } message: {
+            Text(alertMessage)
+        }
+    }
+    
+    private func saveAPIKey() {
+        let trimmedKey = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        guard !trimmedKey.isEmpty else {
+            showAlert("APIキーを入力してください")
+            return
+        }
+        
+        guard trimmedKey.hasPrefix("sk-ant-") else {
+            showAlert("有効なClaude APIキーを入力してください\n(sk-ant-で始まる形式)")
+            return
+        }
+        
+        if environmentManager.saveAPIKey(trimmedKey) {
+            showAlert("✅ APIキーを.envファイルに保存しました")
+            apiKeyInput = "" // セキュリティのため入力フィールドをクリア
+        } else {
+            showAlert("❌ APIキーの保存に失敗しました\n\(environmentManager.lastError ?? "")")
+        }
+    }
+    
+    private func testAPIConnection() {
+        isTestingAPI = true
+        testResult = nil
+        
+        Task {
+            let success = await environmentManager.testAPIKey()
+            
+            await MainActor.run {
+                isTestingAPI = false
+                testResult = success ? 
+                    "✅ Claude APIへの接続に成功しました！" : 
+                    "❌ Claude APIへの接続に失敗しました。APIキーを確認してください。"
+            }
+        }
+    }
+    
+    private func showAlert(_ message: String) {
+        alertMessage = message
+        showingAlert = true
     }
 }
 
@@ -340,16 +758,13 @@ struct ExpandedPanel: View {
                 Spacer()
                 
                 HStack(spacing: 4) {
-                    // スクリーンショットボタン
+                    // APIキー設定ボタン
                     Button(action: {
-                        print("📷 スクリーンショットボタンがクリックされました")
-                        Task {
-                            await appState.takeScreenshot()
-                        }
+                        appState.showSettings = true
                     }) {
-                        Image(systemName: "camera.fill")
+                        Image(systemName: appState.environmentManager.isAPIKeySet ? "key.fill" : "key")
                             .font(.system(size: 12))
-                            .foregroundColor(.green)
+                            .foregroundColor(appState.environmentManager.isAPIKeySet ? .green : .orange)
                     }
                     .buttonStyle(PlainButtonStyle())
                     
@@ -424,13 +839,13 @@ struct ChatArea: View {
                                 .multilineTextAlignment(.center)
                             
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("📷 緑のカメラボタンでスクリーンショット")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.secondary)
                                 Text("🎯 AI分析によるチュートリアル表示")
                                     .font(.system(size: 10))
                                     .foregroundColor(.secondary)
                                 Text("🖱️ 背景アプリはクリック透過")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                                Text("⚙️ 歯車ボタンでAPI設定")
                                     .font(.system(size: 10))
                                     .foregroundColor(.secondary)
                             }
@@ -1273,6 +1688,16 @@ class MCPService {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["node", "\(mcpServerPath)/build/index.js"]
         
+        // Swift側で保存したAPIキーを環境変数として設定
+        if let apiKey = await EnvironmentManager.shared.loadAPIKey() {
+            var environment = ProcessInfo.processInfo.environment
+            environment["CLAUDE_API_KEY"] = apiKey
+            process.environment = environment
+            print("✅ MCPサーバーにAPIキーを環境変数として設定")
+        } else {
+            print("⚠️ APIキーが見つかりません。設定画面でAPIキーを入力してください。")
+        }
+        
         let inputPipe = Pipe()
         let outputPipe = Pipe()
         let errorPipe = Pipe()
@@ -1784,9 +2209,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupMenu()
         
         print("🚀 AIオーバーレイアプリ v2.0 が起動しました")
-        print("📷 緑のカメラボタンでスクリーンショット撮影")
         print("🤖 「どこをクリックすると〜できるの？」と質問してください")
-        print("🎯 デモ版チュートリアル表示機能")
+        print("🎯 AI分析によるチュートリアル表示機能")
+        print("⚙️ 歯車ボタンでAPI設定")
         print("🖱️ 背景アプリは透過してクリック可能")
         print("⌘Q で終了")
     }
@@ -1956,7 +2381,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func showAbout() {
         let alert = NSAlert()
         alert.messageText = "MyOverlayApp v2.0"
-        alert.informativeText = "AI搭載インタラクティブオーバーレイアプリ\n\n✨ 機能:\n• スクリーンショット撮影 (画面収録権限必要)\n• インタラクティブチュートリアル (デモ版)\n• 赤枠ガイド表示\n• ドラッグ移動対応\n• 背景透過クリック"
+        alert.informativeText = "AI搭載インタラクティブオーバーレイアプリ\n\n✨ 機能:\n• AI分析によるチュートリアル表示\n• 赤枠ガイド表示\n• ドラッグ移動対応\n• 背景透過クリック\n• .env方式のAPI設定"
         alert.alertStyle = .informational
         alert.runModal()
     }
